@@ -1,9 +1,13 @@
-from .models import CustomUser, CustomUserConfirmation, Note, NoteCategory
+from .models import CustomUser, CustomUserConfirmation, Note, NoteCategory, Follow
 from django.contrib import admin
 
 
 class CustomUserAdmin(admin.ModelAdmin):
-    list_display = ['username', 'auth_status', 'auth_type', 'phone_number', 'province']
+    list_display = ['username', 'auth_status', 'auth_type', 'phone_number', 'email', 'province']
+
+
+class FollowAdmin(admin.ModelAdmin):
+    list_display = ['follower', 'following']
 
 
 class CustomUserConfirmationAdmin(admin.ModelAdmin):
@@ -19,6 +23,7 @@ class NoteCategoryAdmin(admin.ModelAdmin):
 
 
 admin.site.register(CustomUser, CustomUserAdmin)
+admin.site.register(Follow, FollowAdmin)
 admin.site.register(CustomUserConfirmation, CustomUserConfirmationAdmin)
 admin.site.register(Note, NoteAdmin)
 admin.site.register(NoteCategory, NoteCategoryAdmin)
