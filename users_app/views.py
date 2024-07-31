@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import AUTH_STATUS, CustomUser, CustomUserConfirmation, Note
+from .models import AuthStatus, CustomUser, CustomUserConfirmation, Note, Tab
 from .serializers import (
     CustomUserSerializer,
     CustomUsersSerializer,
@@ -11,7 +11,7 @@ from .serializers import (
     MyTokenObtainPairSerializer,
     NoteSerializer,
     RegisterSerializer,
-    VerificationSerializer, LoginDataSerializer,
+    VerificationSerializer, TabSerializer,
 )
 
 
@@ -36,7 +36,7 @@ class RegisterAPIView(APIView):
 
 
 class VerifyAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated,]
+    permission_classes = [permissions.IsAuthenticated, ]
 
     def post(self, request):
         print(f"1) request.data >> {request.data}")
@@ -54,7 +54,7 @@ class VerifyAPIView(APIView):
             if not CustomUserConfirmation.objects.filter(user=user, code=code).exists():
                 return Response({"error": "Invalid verification code."}, status=status.HTTP_404_NOT_FOUND)
 
-            user.auth_status = AUTH_STATUS.done
+            user.auth_status = AuthStatus.done
             user.save()
 
             confirmation = CustomUserConfirmation.objects.get(user=user, code=code)
@@ -67,7 +67,7 @@ class VerifyAPIView(APIView):
 
 
 class LoginAPIView(APIView):
-    permission_classes = [permissions.AllowAny,]
+    permission_classes = [permissions.AllowAny, ]
 
     def post(self, request):
         print(f"1) request.data >> {request.data}")
@@ -101,7 +101,7 @@ class LoginAPIView(APIView):
 
 
 class LogoutView(APIView):
-    permission_classes = [permissions.IsAuthenticated,]
+    permission_classes = [permissions.IsAuthenticated, ]
 
     def post(self, request):
         print(f"1) request.data >> {request.data}")
@@ -120,51 +120,81 @@ class MyTokenPairView(TokenObtainPairView):
 
 
 class ProfileAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated,]
+    permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
-        print(f"1) request headers >> {request.headers}")
-        print(f"2) request >> {request}")
-        print(f"3) request.user >> {request.user}")
-        try:
-            user = request.user
-        except Exception as e:
-            print(f'user error >> {e}')
-        user_serializer = CustomUserSerializer(user, many=False)
-        print(f"4) user_serializer.data >> {user_serializer.data}")
-        return Response(user_serializer.data, status=status.HTTP_200_OK)
+        print(f"2) request.data >> {request.data}, request.user >> {request.user}")
+        profile_serializer = CustomUserSerializer(request.user, many=False)
+        print(f"4) profile_serializer.data >> {profile_serializer.data}")
+        return Response(profile_serializer.data, status=status.HTTP_200_OK)
+
+
+class TabAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def post(self, request):
+        print(f"user >> {request.user}, data >> {request.data}")
+        tab_serializer = TabSerializer(data=request.data, context={'owner': request.user})
+        if tab_serializer.is_valid():
+            tab_serializer.save()
+            new_tab = tab_serializer.data
+            new_tab.pop('owner', None)
+            return Response(new_tab, status=status.HTTP_201_CREATED)
+        return Response(tab_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        tab_id = request.data.get("id")
+        print(f"user >> {request.user}\n tab_id >> {tab_id}")
+        tab = Tab.objects.get(id=tab_id, owner=request.user)
+        serializer = TabSerializer(tab, data=request.data, context={"owner": request.user}, many=False)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request):
+        note = Note.objects.get(id=request.data["id"])
+        note.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class NotesAPIView(APIView):
-    permission_classes = [permissions.AllowAny,]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user
         notes = user.notes.all()
-        note_serializer = NoteSerializer(notes, many=True)
-        return Response(note_serializer.data, status=status.HTTP_200_OK)
+        print(f'user >> {user}\n notes >> {notes}')
+        serializer = NoteSerializer(notes, many=True)
+        notes = serializer.data
+        for note in notes:
+            note.pop("owner", None)
+        return Response(notes, status=status.HTTP_200_OK)
 
     def post(self, request):
-        print(f"1) request: {request}")
-        user = request.user
-        print(f"1) request: {user}")
-        serializer = NoteSerializer(data=request.data)
+        print(f"data >> {request.data}\n user >> {request.user}")
+        serializer = NoteSerializer(data=request.data, context={"owner": request.user}, many=False)
         if serializer.is_valid():
-            serializer.save(owner=user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            serializer.save()
+            new_note = serializer.data
+            new_note.pop('owner', None)
+            return Response(new_note, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def put(self, request):
+        user = request.user
+        print(f"user >> {user}\n tab_id >> {request.data.get('id')}")
+        tab = Tab.objects.get(id=request.data.get("id"), owner=request.user)
+        serializer = TabSerializer(tab, data=request.data, context={"owner": request.user}, many=False)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
     def delete(self, request):
-        notes = Note.objects.all()
-        note = Note.objects.get(id=request.data["id"])
-        notes_serializer = NoteSerializer(notes, many=True)
-        try:
-            print(f"note is deleted: {note}")
-            note.delete()
-        except:
-            print("node did not delete!")
-            return Response(notes_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        return Response(notes_serializer.data, status=status.HTTP_200_OK)
+        tab = Tab.objects.get(id=request.data["id"])
+        tab.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CustomUsersAPIView(APIView):
@@ -174,3 +204,4 @@ class CustomUsersAPIView(APIView):
         users = CustomUser.objects.all()
         users_serializers = CustomUsersSerializer(users, many=True)
         return Response(users_serializers.data, status=status.HTTP_200_OK)
+

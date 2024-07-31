@@ -6,7 +6,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from config.settings import EMAIL_HOST_USER
 from shared_app.utils import send_sms_vonage, validate_email_or_phone
-from .models import AUTH_TYPE, CustomUser, Note
+from .models import AuthType, CustomUser, Note, Tab
 
 
 class RegisterSerializer(ModelSerializer):
@@ -35,16 +35,16 @@ class RegisterSerializer(ModelSerializer):
             raise serializers.ValidationError("Username already exists")
         print("1) email_or_phone: ", email_or_phone)
         auth_type = validate_email_or_phone(email_or_phone)
-        if auth_type == AUTH_TYPE.email:
+        if auth_type == AuthType.email:
             data.update({"email": email_or_phone, "auth_type": auth_type})
             if CustomUser.objects.filter(email=data["email_or_phone"]).exists():
                 raise serializers.ValidationError("Email already exist")
-        elif auth_type == AUTH_TYPE.phone:
+        elif auth_type == AuthType.phone:
             data.update({"phone_number": email_or_phone, "auth_type": auth_type})
             if CustomUser.objects.filter(phone_number=data["email_or_phone"]).exists():
                 raise serializers.ValidationError("Phone number already exist")
         else:
-            raise serializers.er("Invalid email or phone number")
+            raise serializers.ValidationError("Invalid email or phone number")
         if (password == ''):
             raise serializers.ValidationError('password field is required')
         print("2) validated data from validate: ", data)
@@ -60,8 +60,8 @@ class RegisterSerializer(ModelSerializer):
         except Exception as e:
             print("4) user password did not hashed!!!: ", e)
             raise serializers.ValidationError("password did not hashed!!!")
-        if user.auth_type == AUTH_TYPE.email:
-            code = user.create_verify_code(AUTH_TYPE.email)
+        if user.auth_type == AuthType.email:
+            code = user.create_verify_code(AuthType.email)
             print("5) auth_type is email, code: ", code)
             send_mail(
                 subject="We congratulate you on registration",
@@ -73,7 +73,7 @@ class RegisterSerializer(ModelSerializer):
                 fail_silently=False,
             )
         else:
-            code = user.create_verify_code(AUTH_TYPE.phone)
+            code = user.create_verify_code(AuthType.phone)
             print(f"5) auth_type is phone, code: {code}")
             response = send_sms_vonage(
                 to_number=user.phone_number,
@@ -101,6 +101,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
     created_time = serializers.DateTimeField(read_only=True)
     updated_time = serializers.DateTimeField(read_only=True)
     days_since_joined = serializers.SerializerMethodField(read_only=True)
+    tabs = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
@@ -122,6 +123,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
             "date_joined",
             "created_time",
             "updated_time",
+            "tabs"
         ]
 
     @staticmethod
@@ -129,14 +131,14 @@ class CustomUserSerializer(serializers.ModelSerializer):
         return (timezone.now() - obj.date_joined).days
 
     @staticmethod
-    def get_access_token(obj):
-        refresh = RefreshToken.for_user(obj)
-        return str(refresh.access_token)
-
-    @staticmethod
-    def get_refresh_token(obj):
-        refresh = RefreshToken.for_user(obj)
-        return str(refresh)
+    def get_tabs(obj):
+        tabs = []
+        categories = obj.note_categories.all()
+        for category in categories:
+            tabs.append({"category_name": f"{category.name}",
+                         "category_sequence_number": f"{category.tab_sequence_number}"
+                         })
+        return tabs
 
 
 class LoginDataSerializer(CustomUserSerializer):
@@ -154,9 +156,46 @@ class LoginDataSerializer(CustomUserSerializer):
         return representation
 
 
+class TabSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(read_only=True)
+    owner = CustomUserSerializer(read_only=True)
+    created_time = serializers.DateTimeField(read_only=True)
+    updated_time = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = Tab
+        fields = ["id", "owner", "name", "tab_sequence_number", "created_time", "updated_time"]
+
+    def validate(self, data):
+        owner = self.context.get('owner')
+        name = data.get("name")
+        print(f"data >{data}\n owner > {owner}\n name > {name}")
+        if not owner:
+            raise serializers.ValidationError("Tab owner must provided")
+        elif not name:
+            raise serializers.ValidationError("Tab name must provided")
+        elif Tab.objects.filter(owner=owner, name=name).exists():
+            raise serializers.ValidationError("Tab already exists")
+        data['owner'] = owner
+        return data
+
+    def create(self, validated_data):
+        new_tab = Tab.objects.create(**validated_data)
+        print(f"new_note_category >> {new_tab}")
+        return new_tab
+
+    def update(self, instance, validated_data):
+        print(f"validated_data >> {validated_data}")
+        instance.name = validated_data.get("name", instance.name)
+        instance.tab_sequence_number = validated_data.get("tab_sequence_number", instance.tab_sequence_number)
+        instance.save()
+        return instance
+
+
 class NoteSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
     owner = CustomUserSerializer(read_only=True)
+    category = serializers.PrimaryKeyRelatedField(queryset=Tab.objects.all(), required=False)
     created_time = serializers.DateTimeField(read_only=True)
     updated_time = serializers.DateTimeField(read_only=True)
 
@@ -165,30 +204,41 @@ class NoteSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "owner",
-            "text",
+            "body",
             "isPinned",
-            "sequence_number",
+            "note_sequence_number",
             "category",
             "created_time",
             "updated_time",
         ]
 
     def validate(self, data):
-        if not data["text"]:
-            raise serializers.ValidationError("Text field can not be empty.")
+        owner = self.context.get('owner')
+        body = data.get("body")
+        category = data.get("category")
+        print(f"owner >> {owner}\n body >> {body}\n category >> {category}, data >> {data}")
+        if not owner:
+            raise serializers.ValidationError("Owner of the note must be provided")
+        elif not body:
+            raise serializers.ValidationError("Note body must be provided")
+        elif Note.objects.filter(owner=owner, body=body).exists():
+            raise serializers.ValidationError("Note already exist")
+        elif category and not Tab.objects.filter(id=category.id, owner=owner).exists():
+            raise serializers.ValidationError("Category must belongs to owner of the note")
+        data['owner'] = owner
         return data
 
     def create(self, validated_data):
-        owner = validated_data.get("owner")
-        note = validated_data.get("text")
-        if Note.objects.filter(owner=owner, text=note).exists():
-            raise serializers.ValidationError("Note already exist")
-        created_note = Note.objects.create(owner=owner, text=note)
-        created_note.save()
+        created_note = Note.objects.create(**validated_data)
+        print(f"created_note >> {created_note}")
         return created_note
 
     def update(self, instance, validated_data):
-        instance.text = validated_data.get("text", instance.text)
+        print(f"validated_data >> {validated_data}")
+        instance.body = validated_data.get("body", instance.body)
+        instance.category = validated_data.get("category", instance.category)
+        instance.isPinned = validated_data.get("isPinned", instance.isPinned)
+        instance.note_sequence_number = validated_data.get("note_sequence_number", instance.note_sequence_number)
         instance.save()
         return instance
 
