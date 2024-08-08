@@ -96,18 +96,14 @@ class VerificationSerializer(serializers.Serializer):
 
 class CustomUserSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
-    auth_type = serializers.CharField(read_only=True)
-    date_joined = serializers.DateTimeField(read_only=True)
-    created_time = serializers.DateTimeField(read_only=True)
-    updated_time = serializers.DateTimeField(read_only=True)
     days_since_joined = serializers.SerializerMethodField(read_only=True)
-    tabs = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
         fields = [
             "id",
             "username",
+            "password",
             "full_name",
             "days_since_joined",
             "photo",
@@ -117,28 +113,13 @@ class CustomUserSerializer(serializers.ModelSerializer):
             "phone_number",
             "date_of_birth",
             "gender",
-            "auth_type",
             "province",
             "bio",
-            "date_joined",
-            "created_time",
-            "updated_time",
-            "tabs"
         ]
 
     @staticmethod
     def get_days_since_joined(obj):
         return (timezone.now() - obj.date_joined).days
-
-    @staticmethod
-    def get_tabs(obj):
-        tabs = []
-        categories = obj.note_categories.all()
-        for category in categories:
-            tabs.append({"category_name": f"{category.name}",
-                         "category_sequence_number": f"{category.tab_sequence_number}"
-                         })
-        return tabs
 
 
 class LoginDataSerializer(CustomUserSerializer):
@@ -159,12 +140,10 @@ class LoginDataSerializer(CustomUserSerializer):
 class TabSerializer(serializers.ModelSerializer):
     id = serializers.CharField(read_only=True)
     owner = CustomUserSerializer(read_only=True)
-    created_time = serializers.DateTimeField(read_only=True)
-    updated_time = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Tab
-        fields = ["id", "owner", "name", "tab_sequence_number", "created_time", "updated_time"]
+        fields = ["id", "owner", "name"]
 
     def validate(self, data):
         owner = self.context.get('owner')
@@ -196,8 +175,6 @@ class NoteSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
     owner = CustomUserSerializer(read_only=True)
     category = serializers.PrimaryKeyRelatedField(queryset=Tab.objects.all(), required=False)
-    created_time = serializers.DateTimeField(read_only=True)
-    updated_time = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Note
@@ -205,11 +182,7 @@ class NoteSerializer(serializers.ModelSerializer):
             "id",
             "owner",
             "body",
-            "isPinned",
-            "note_sequence_number",
             "category",
-            "created_time",
-            "updated_time",
         ]
 
     def validate(self, data):

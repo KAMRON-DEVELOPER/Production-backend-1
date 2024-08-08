@@ -123,23 +123,35 @@ class ProfileAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
-        print(f"2) request.data >> {request.data}, request.user >> {request.user}")
-        profile_serializer = CustomUserSerializer(request.user, many=False)
-        print(f"4) profile_serializer.data >> {profile_serializer.data}")
+        user = request.user
+        profile_serializer = CustomUserSerializer(user, many=False)
+        print(f"profile >> {user}")
         return Response(profile_serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        user = request.user
 
 
 class TabAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, ]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        tabs = request.user.tabs.all()
+        tabs_serializer = TabSerializer(tabs, many=True)
+        tabs = tabs_serializer.data
+        for tab in tabs:
+            tab.pop('owner', None)
+        print(f"user >> {request.user}, tabs_serializer >> {tabs_serializer.data}")
+        return Response(tabs, status=status.HTTP_200_OK)
 
     def post(self, request):
         print(f"user >> {request.user}, data >> {request.data}")
         tab_serializer = TabSerializer(data=request.data, context={'owner': request.user})
         if tab_serializer.is_valid():
             tab_serializer.save()
-            new_tab = tab_serializer.data
-            new_tab.pop('owner', None)
-            return Response(new_tab, status=status.HTTP_201_CREATED)
+            tab = tab_serializer.data
+            tab.pop('owner', None)
+            return Response(tab, status=status.HTTP_201_CREATED)
         return Response(tab_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request):
@@ -162,11 +174,10 @@ class NotesAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        notes = user.notes.all()
-        print(f'user >> {user}\n notes >> {notes}')
-        serializer = NoteSerializer(notes, many=True)
-        notes = serializer.data
+        notes = request.user.notes.filter(category=None)
+        print(f'user >> {request.user}\n notes >> {notes}')
+        notes_serializer = NoteSerializer(notes, many=True)
+        notes = notes_serializer.data
         for note in notes:
             note.pop("owner", None)
         return Response(notes, status=status.HTTP_200_OK)

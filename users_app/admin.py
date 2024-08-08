@@ -15,11 +15,11 @@ class CustomUserConfirmationAdmin(admin.ModelAdmin):
 
 
 class TabAdmin(admin.ModelAdmin):
-    list_display = ('id', 'owner', 'name', 'tab_sequence_number')
+    list_display = ('id', 'owner', 'name')
 
 
 class NoteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'owner', 'body', 'isPinned', 'note_sequence_number', 'category')
+    list_display = ('id', 'owner', 'body', 'category')
 
 
 admin.site.register(CustomUser, CustomUserAdmin)

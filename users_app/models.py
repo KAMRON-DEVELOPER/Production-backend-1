@@ -173,29 +173,21 @@ class Follow(BaseModel):
 
 
 class Tab(BaseModel):
-    """owner, category_name, tab_sequence_number"""
-    owner = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="note_categories")
+    """owner, name"""
+    owner = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="tabs")
     name = models.CharField(max_length=20)
-    tab_sequence_number = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
-        return f"'{self.name}' category belong to {self.owner}"
+        return f"'{self.name}' tab belong to {self.owner}"
 
     class Meta:
         unique_together = ('owner', 'name')
 
-    def save(self, *args, **kwargs):
-        if Tab.objects.filter(owner=self.owner, name=self.name).exists():
-            raise ValidationError("Tabs must be unique")
-        super().save(*args, **kwargs)
-
 
 class Note(BaseModel):
-    """owner, body, isPinned, note_sequence_number, category, created_time, updated_time"""
+    """owner, body, category"""
     owner = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="notes", null=True, )
     body = models.TextField()
-    isPinned = models.BooleanField(default=False)
-    note_sequence_number = models.IntegerField(null=True, blank=True)
     category = models.ForeignKey(Tab, on_delete=models.CASCADE, related_name="notes", null=True, blank=True)
 
     def __str__(self):
@@ -204,7 +196,3 @@ class Note(BaseModel):
     class Meta:
         unique_together = ('owner', 'body')
 
-    def save(self, *args, **kwargs):
-        if self.category is not None and self.category not in self.owner.note_categories.all():
-            raise ValidationError("Note owner must be the same as NoteCategory owner.")
-        super().save(*args, **kwargs)
